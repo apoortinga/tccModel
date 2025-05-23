@@ -11,52 +11,10 @@ import yaml
 from collections import Counter
 from random import shuffle
 from scipy.sparse.linalg import splu
-from sentinelhub import WmsRequest, WcsRequest, MimeType
-from sentinelhub import CRS, BBox, constants, DataSource, CustomUrlParam
 from skimage.transform import resize
 from pyproj import Proj, transform
 from typing import List, Any, Tuple
 from shapely.geometry import Point, Polygon
-
-
-def calculate_bbx_pyproj(coord: Tuple[float, float],
-                         step_x: int,
-                         step_y: int,
-                         expansion: int,
-                         multiplier: int = 1.) -> (Tuple[float, float], 'CRS'):
-    ''' Calculates the four corners of a bounding box
-        [bottom left, top right] as well as the UTM EPSG using Pyproj
-
-        Note: The input for this function is (x, y), not (lat, long)
-
-        Parameters:
-         coord (tuple): Initial (long, lat) coord
-         step_x (int): X tile number of a 6300x6300 meter tile
-         step_y (int): Y tile number of a 6300x6300 meter tile
-         expansion (int): Typically 10 meters - the size of the border for the predictions
-         multiplier (int): Currently deprecated
-
-        Returns:
-         coords (tuple):
-         CRS (int):
-    '''
-
-    inproj = Proj('epsg:4326')
-    outproj_code = calculate_epsg(coord)
-    outproj = Proj('epsg:' + str(outproj_code))
-
-    coord_utm = transform(inproj, outproj, coord[1], coord[0])
-    coord_utm_bottom_left = (coord_utm[0] + step_x * 6300 - expansion,
-                             coord_utm[1] + step_y * 6300 - expansion)
-
-    coord_utm_top_right = (coord_utm[0] + (step_x + multiplier) * 6300 +
-                           expansion, coord_utm[1] +
-                           (step_y + multiplier) * 6300 + expansion)
-
-    zone = str(outproj_code)[3:]
-    direction = 'N' if coord[1] >= 0 else 'S'
-    utm_epsg = "UTM_" + zone + direction
-    return (coord_utm_bottom_left, coord_utm_top_right), CRS[utm_epsg]
 
 
 def calculate_epsg(points: Tuple[float, float]) -> int:
@@ -469,37 +427,6 @@ def tile_window(h: int,
     return tiles
 
 
-def check_contains(coord: tuple, step_x: int, step_y: int, folder: str) -> bool:
-    """Given an input .geojson, identifies whether a given tile intersections
-       the geojson
-
-        Parameters:
-         coord (tuple):
-         step_x (int):
-         step_y (int):
-         folder (path):
-
-        Returns:
-         contains (bool)
-    """
-    contains = False
-    bbx, epsg = calculate_bbx_pyproj(coord, step_x, step_y, expansion=80)
-    inproj = Proj('epsg:' + str(str(epsg)[5:]))
-    outproj = Proj('epsg:4326')
-    bottomleft = transform(inproj, outproj, bbx[0][0], bbx[0][1])
-    topright = transform(inproj, outproj, bbx[1][0], bbx[1][1])
-
-    if os.path.exists(folder):
-        if any([x.endswith(".geojson") for x in os.listdir(folder)]):
-            geojson_path = folder + [
-                x for x in os.listdir(folder) if x.endswith(".geojson")
-            ][0]
-
-            bool_contains = pts_in_geojson(lats=[bottomleft[1], topright[1]],
-                                           longs=[bottomleft[0], topright[0]],
-                                           geojson=geojson_path)
-            contains = bool_contains
-    return contains
 
 
 def hist_match(source: np.ndarray, template: np.ndarray) -> np.ndarray:
