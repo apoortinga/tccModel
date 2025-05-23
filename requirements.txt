@@ -1,0 +1,17 @@
+numpy
+pandas
+hickle
+tensorflow==2.15.0
+rasterio
+scikit-image
+scikit-learn
+scipy
+pyproj
+shapely
+matplotlib
+bottleneck
+requests
+google-auth
+google-api-core
+earthengine-api
+tqdm
