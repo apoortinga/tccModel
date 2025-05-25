@@ -6,7 +6,7 @@ import datetime
 from typing import List
 from functools import wraps
 from time import time
-from src.downloading.utils import calculate_and_save_best_images
+from downloading.utils import calculate_and_save_best_images
 
 
 def timing(f):

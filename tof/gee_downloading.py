@@ -17,11 +17,11 @@ from scipy.ndimage.morphology import binary_dilation
 import hickle as hkl
 from skimage.transform import resize
 import math
-from src.downloading.utils import calculate_and_save_best_images
-from src.preprocessing.slope import calcSlope
+from downloading.utils import calculate_and_save_best_images
+from preprocessing.slope import calcSlope
 
 # Initialize the Earth Engine module.
-ee.Initialize()
+#ee.Initialize()
 
 def ee_init() -> None:
     """Authenticate and initialize Earth Engine with the default credentials."""
@@ -790,7 +790,7 @@ def download_dem(cloud_bbx,crs):
 
 def getLabel(bbx,crs):
     
-    image = ee.Image("users/apoortinga/cacao/MbangassinaTCC").gt(25)
+    image = ee.Image(0) #ee.Image("users/apoortinga/cacao/MbangassinaTCC").gt(25)
     #crs = image.projection().crs().getInfo()
     patchsize = 640
     print(bbx[0], bbx[1],crs)

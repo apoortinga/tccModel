@@ -5,7 +5,7 @@ import hickle as hkl
 from preprocessing.indices import evi, bi, msavi2, grndvi
 from preprocessing import interpolation
 from preprocessing.whittaker_smoother import Smoother
-from src.downloading.utils import calculate_and_save_best_images
+from downloading.utils import calculate_and_save_best_images
 
 
 min_all = [0.006576638437476157, 0.0162050812542916, 0.010040436408026246, 0.013351644159609368, 

@@ -351,6 +351,36 @@ model_path = cfg["paths"]["predict_model_path"]
 superresolve_model_path = cfg["paths"]["superresolve_model_path"]
 
 
+
+parser = argparse.ArgumentParser(description="Append a labeled point to the labeltcc file.")
+parser.add_argument("--lat", type=float, required=True, help="Latitude value")
+parser.add_argument("--lon", type=float, required=True, help="Longitude value")
+parser.add_argument("--x", type=int, default=1, help="X coordinate (default: 1)")
+parser.add_argument("--y", type=int, default=1, help="Y coordinate (default: 1)")
+parser.add_argument("--country", type=str, default="cameroon", help="country name")
+parser.add_argument("--outputdir", type=str, default="/home/ate/temp/", help="output dir")
+parser.add_argument('--ee-key', type=str, help='Path to Earth Engine service account key')
+parser.add_argument(
+    "--superresolve-model-path",
+    type=str,
+    required=True,  # or optional if you default to config.yaml
+    help="Path to directory containing superresolve_graph.pb"
+)
+args = parser.parse_args()
+superresolve_model_path = args.superresolve_model_path
+
+import ee
+import google.auth
+from google.oauth2 import service_account
+
+credentials = service_account.Credentials.from_service_account_file(
+    args.ee_key,
+    scopes=["https://www.googleapis.com/auth/earthengine.readonly"]
+)
+ee.Initialize(credentials)
+
+
+
 # Lots of code here to load two tensorflow graphs at once
 superresolve_graph_def = tf.compat.v1.GraphDef()
 predict_graph_def = tf.compat.v1.GraphDef()
@@ -368,16 +398,6 @@ else:
 
 
 
-parser = argparse.ArgumentParser(description="Append a labeled point to the labeltcc file.")
-parser.add_argument("--lat", type=float, required=True, help="Latitude value")
-parser.add_argument("--lon", type=float, required=True, help="Longitude value")
-parser.add_argument("--x", type=int, default=1, help="X coordinate (default: 1)")
-parser.add_argument("--y", type=int, default=1, help="Y coordinate (default: 1)")
-parser.add_argument("--country", type=str, default="cameroon", help="country name")
-parser.add_argument("--outputdir", type=str, default="/home/ate/temp/", help="output dir")
-
-
-args = parser.parse_args()
 year = 2024
 lat = args.lat
 lon =args.lon
@@ -398,7 +418,7 @@ print("############# step 1: getting the data #############")
 bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion)
 
 out_tif_path = f"{outputdir}/{str(year)}/geotifs/{y}_{x}.tif"
-write_geotiff(initial_bbx, crs, 640, 640, out_tif_path,np.zeros((640, 640), dtype=np.uint8))
+write_geotiff(bbx, crs, 640, 640, out_tif_path,np.zeros((640, 640), dtype=np.uint8))
 
 print("############# step 1a: getting the label #############")
 

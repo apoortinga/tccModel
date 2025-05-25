@@ -2,7 +2,7 @@ import numpy as np
 import sys
 
 sys.path.append('../')
-from src.downloading.utils import calculate_proximal_steps, calculate_proximal_steps_two
+from downloading.utils import calculate_proximal_steps, calculate_proximal_steps_two
 from typing import List, Any, Tuple
 import rasterio as rs
 from functools import reduce

@@ -302,12 +302,12 @@ def process_tile(x: int, y: int,
         # out non-urban areas from the false positive cloud removal
         #! TODO: https://www.sciencedirect.com/science/article/pii/S0034425718302037
         cloudshad, fcps = cloud_removal.identify_clouds_shadows(sentinel2, dem, bbx)
-        if clm is not None:
-            try:
-                clm[fcps] = 0.
-                cloudshad = np.maximum(cloudshad, clm)
-            except:
-                print("Error, continuing")
+        #if clm is not None:
+        #    try:
+        #        clm[fcps] = 0.
+        #        cloudshad = np.maximum(cloudshad, clm)
+        #    except:
+        #        print("Error, continuing")
 
         interp = cloud_removal.id_areas_to_interp(
             sentinel2, cloudshad, cloudshad, image_dates, pfcps = fcps
