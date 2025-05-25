@@ -2,7 +2,6 @@ import datetime
 import logging
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import math
 import os
 import scipy.sparse as sparse
@@ -15,6 +14,71 @@ from skimage.transform import resize
 from pyproj import Proj, transform
 from typing import List, Any, Tuple
 from shapely.geometry import Point, Polygon
+
+
+def calculate_bbx_pyproj(coord: Tuple[float, float],
+                         step_x: int,
+                         step_y: int,
+                         expansion: int,
+                         multiplier: int = 1.) -> (Tuple[float, float], 'CRS'):
+    ''' Calculates the four corners of a bounding box
+        [bottom left, top right] as well as the UTM EPSG using Pyproj
+
+        Note: The input for this function is (x, y), not (lat, long)
+
+        Parameters:
+         coord (tuple): Initial (long, lat) coord
+         step_x (int): X tile number of a 6300x6300 meter tile
+         step_y (int): Y tile number of a 6300x6300 meter tile
+         expansion (int): Typically 10 meters - the size of the border for the predictions
+         multiplier (int): Currently deprecated
+
+        Returns:
+         coords (tuple):
+         CRS (int):
+    '''
+
+    inproj = Proj('epsg:4326')
+    outproj_code = calculate_epsg(coord)
+    outproj = Proj('epsg:' + str(outproj_code))
+
+    coord_utm = transform(inproj, outproj, coord[1], coord[0])
+    coord_utm_bottom_left = (coord_utm[0] + step_x * 6300 - expansion,
+                             coord_utm[1] + step_y * 6300 - expansion)
+
+    coord_utm_top_right = (coord_utm[0] + (step_x + multiplier) * 6300 +
+                           expansion, coord_utm[1] +
+                           (step_y + multiplier) * 6300 + expansion)
+
+    zone = str(outproj_code)[3:]
+    direction = 'N' if coord[1] >= 0 else 'S'
+    utm_epsg = "UTM_" + zone + direction
+    return (coord_utm_bottom_left, coord_utm_top_right), CRS[utm_epsg]
+
+
+def calc_bbx_of_size(coord: Tuple[float, float],
+                     size) -> (Tuple[float, float], 'CRS'):
+    ''' Calculates the four corners of a bounding box
+        [bottom left, top right] as well as the UTM EPSG using Pyproj
+
+        Note: The input for this function is (x, y), not (lat, long)
+    '''
+
+    inproj = Proj('epsg:4326')
+    outproj_code = calculate_epsg(coord)
+    outproj = Proj('epsg:' + str(outproj_code))
+
+    coord_utm = transform(inproj, outproj, coord[1], coord[0])
+    coord_utm_bottom_left = (coord_utm[0] - size // 2,
+                             coord_utm[1] - size // 2)
+
+    coord_utm_top_right = (coord_utm[0] + size // 2,
+                           expansion, coord_utm[1] + size // 2)
+    coord_bottom_left = transform(outproj, inproj, 
+        coord_utm_bottom_left[1], coord_utm_bottom_left[0])
+    coord_top_right = transform(outproj, inproj, 
+        coord_utm_top_right[1], coord_utm_top_right[0])
+    return (coord_bottom_left, coord_top_right)
 
 
 def calculate_epsg(points: Tuple[float, float]) -> int:
@@ -224,13 +288,14 @@ def calculate_and_save_best_images(
         after_images_idx = np.array(after_images_idx).reshape(-1)
         after_images_idx = sorted(list(set(after_images_idx)))
         prior_images_idx = sorted(list(set(prior_images_idx)))
+
         if len(after_images_idx) > 2:
             after_images_idx = after_images_idx[-2:]
         if len(prior_images_idx) > 2:
             prior_images_idx = prior_images_idx[:2]
         #print(np.concatenate([prior_images_idx, after_images_idx]))
         selected_images[i] = {
-            'image_date': np.array([prior_dates, after_dates]).flatten(),
+            'image_date': np.array(np.concatenate([prior_dates, after_dates])).flatten(),
             'image_ratio': [prior_ratio, after_ratio],
             'image_idx': [prior_images_idx, after_images_idx]
         }
@@ -427,6 +492,37 @@ def tile_window(h: int,
     return tiles
 
 
+def check_contains(coord: tuple, step_x: int, step_y: int, folder: str) -> bool:
+    """Given an input .geojson, identifies whether a given tile intersections
+       the geojson
+
+        Parameters:
+         coord (tuple):
+         step_x (int):
+         step_y (int):
+         folder (path):
+
+        Returns:
+         contains (bool)
+    """
+    contains = False
+    bbx, epsg = calculate_bbx_pyproj(coord, step_x, step_y, expansion=80)
+    inproj = Proj('epsg:' + str(str(epsg)[5:]))
+    outproj = Proj('epsg:4326')
+    bottomleft = transform(inproj, outproj, bbx[0][0], bbx[0][1])
+    topright = transform(inproj, outproj, bbx[1][0], bbx[1][1])
+
+    if os.path.exists(folder):
+        if any([x.endswith(".geojson") for x in os.listdir(folder)]):
+            geojson_path = folder + [
+                x for x in os.listdir(folder) if x.endswith(".geojson")
+            ][0]
+
+            bool_contains = pts_in_geojson(lats=[bottomleft[1], topright[1]],
+                                           longs=[bottomleft[0], topright[0]],
+                                           geojson=geojson_path)
+            contains = bool_contains
+    return contains
 
 
 def hist_match(source: np.ndarray, template: np.ndarray) -> np.ndarray:

@@ -1,9 +1,8 @@
 
 
 paths:
-  local_path: /media/ate/2ca0e8f5-dc27-455a-8bac-b4bdefb367a7/tcc/temp/
-  predict_model_path: ../models-release/master-ckpt-frozen/
-  superresolve_model_path: /home/ate/sig/treeCover/refactor/supres-40k-swir/
+  local_path: tmp/app/
+  superresolve_model_path: /app/supres-40k-swir/
 
 
 flags:

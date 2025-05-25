@@ -29,6 +29,15 @@ from processing.subtile import process_subtiles,process_subtiles_label
 
 SIZE = 172-14
 
+
+def upload_to_gcs(local_file_path, bucket_name, blob_path):
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_path)
+    blob.upload_from_filename(local_file_path)
+    print(f"Uploaded {local_file_path} to gs://{bucket_name}/{blob_path}")
+
+
 def load_config(path="config.yaml"):
     with open(path, "r") as f:
         return yaml.safe_load(f)
@@ -121,7 +130,7 @@ def superresolve_large_tile(arr: np.ndarray, sess) -> np.ndarray:
 
     return arr
 
-def download_tile(x: int, y: int,  year, initial_bbx, expansion) -> None:
+def download_tile(x: int, y: int,  year, initial_bbx, expansion, local_path = "/tmp/app/") -> None:
     """Downloads the data for an input x, y tile centroid
        including:
         - Clouds
@@ -148,7 +157,8 @@ def download_tile(x: int, y: int,  year, initial_bbx, expansion) -> None:
    
     crs = gee_downloading.getCRS(initial_bbx)
 
-    print("the crs is",crs)
+   
+    os.makedirs(local_path, exist_ok=True)
 
     folder = f"{local_path}/{str(x)}/{str(y)}/"
     tile_idx = f'{str(x)}X{str(y)}Y'
@@ -242,13 +252,26 @@ def download_tile(x: int, y: int,  year, initial_bbx, expansion) -> None:
                 clean_dates = np.sort(clean_dates)
             if len(clean_dates) <= 9:
                 imgs_to_add = 9 - len(clean_dates)
-                lowest_five_local = np.argpartition(all_local_clouds, 5)[:5]
+                
+                #print(f"[DEBUG] all_local_clouds length: {len(all_local_clouds)}")
+                #print(f"[DEBUG] all_local_clouds: {all_local_clouds}")
+
+                if len(all_local_clouds) > 5:
+                    lowest_five_local = np.argpartition(all_local_clouds, 5)[:5]
+                    #print(f"[DEBUG] Using argpartition. lowest_five_local indices: {lowest_five_local}")
+                else:
+                    lowest_five_local = np.argsort(all_local_clouds)[:len(all_local_clouds)]
+                    #print(f"[DEBUG] Using argsort fallback. lowest_five_local indices: {lowest_five_local}")
+                
                 images_to_add = [x for x in image_dates[lowest_five_local] if x not in clean_dates][:imgs_to_add]
                 filenames_to_add = [x for x in filenames[lowest_five_local] if x not in clean_filenames][:imgs_to_add]
+
+                #print(f"[DEBUG] images_to_add: {images_to_add}")
+                #print(f"[DEBUG] filenames_to_add: {filenames_to_add}")
+
                 clean_dates = np.concatenate([clean_dates, images_to_add])
                 clean_filenames = np.concatenate([clean_filenames, filenames_to_add])
                 clean_dates = np.sort(clean_dates)
-
         #for i, x, y in zip(clean_dates, cloud_percent, local_clouds):
         #    print(i, x, y)
 
@@ -337,17 +360,9 @@ def write_geotiff(bbox, crs, height, width, out_path,data):
 
 
 
-
-
-
-
-
-
 cfg = load_config("config.yaml")
-print(cfg)
 
 local_path = f"{cfg['paths']['local_path']}/"
-model_path = cfg["paths"]["predict_model_path"]
 superresolve_model_path = cfg["paths"]["superresolve_model_path"]
 
 
@@ -358,16 +373,11 @@ parser.add_argument("--lon", type=float, required=True, help="Longitude value")
 parser.add_argument("--x", type=int, default=1, help="X coordinate (default: 1)")
 parser.add_argument("--y", type=int, default=1, help="Y coordinate (default: 1)")
 parser.add_argument("--country", type=str, default="cameroon", help="country name")
+parser.add_argument("--year", type=int, default=2024, help="year")
 parser.add_argument("--outputdir", type=str, default="/home/ate/temp/", help="output dir")
 parser.add_argument('--ee-key', type=str, help='Path to Earth Engine service account key')
-parser.add_argument(
-    "--superresolve-model-path",
-    type=str,
-    required=True,  # or optional if you default to config.yaml
-    help="Path to directory containing superresolve_graph.pb"
-)
+
 args = parser.parse_args()
-superresolve_model_path = args.superresolve_model_path
 
 import ee
 import google.auth
@@ -398,40 +408,36 @@ else:
 
 
 
-year = 2024
+year = args.year
 lat = args.lat
 lon =args.lon
 x = args.x # random.randint(1000, 9999)
 y = args.y #random.randint(1000, 9999)
-print("year",year)
 initial_bbx = [lon, lat, lon, lat]
 expansion = 200
 
 outputdir = args.outputdir
 
 # Create directories if they don't exist
-os.makedirs(f"{outputdir}/{str(year)}/geotifs", exist_ok=True)
-os.makedirs(f"{outputdir}/{str(year)}/label", exist_ok=True)
-os.makedirs(f"{outputdir}/{str(year)}/data", exist_ok=True)
+os.makedirs(f"{local_path}/{str(year)}/geotifs", exist_ok=True)
+os.makedirs(f"{local_path}/{str(year)}/label", exist_ok=True)
+os.makedirs(f"{local_path}/{str(year)}/data", exist_ok=True)
 
 print("############# step 1: getting the data #############")
-bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion)
+bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion,local_path =  local_path )
 
 out_tif_path = f"{outputdir}/{str(year)}/geotifs/{y}_{x}.tif"
 write_geotiff(bbx, crs, 640, 640, out_tif_path,np.zeros((640, 640), dtype=np.uint8))
 
-print("############# step 1a: getting the label #############")
+#print("############# step 1a: getting the label #############")
 
-label = gee_downloading.getLabel(initial_bbx,crs)
-out_tif_path = f"{outputdir}/{str(year)}/label/{y}_{x}.tif"
-print(label)
-write_geotiff(bbx, crs, 640, 640, out_tif_path,label)
-
-
+#label = gee_downloading.getLabel(initial_bbx,crs)
+#out_tif_path = f"{outputdir}/{str(year)}/label/{y}_{x}.tif"
+#print(label)
+#write_geotiff(bbx, crs, 640, 640, out_tif_path,label)
 
 print("############# step 2: processing data #############")
 s2, dates, interp, s1, dem, cloudshad, snow = process_tile(x = x,y = y,local_path = local_path, bbx = bbx, make_shadow = True)
-
 
 print("############# step 3: apply super resolve #############")
 s2[..., :10] = superresolve_large_tile(s2[..., :10], superresolve_sess)
