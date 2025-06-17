@@ -229,7 +229,7 @@ def write_to_tif(crs,arr,point):
     new_dataset.close()
 
 
-def download_sentinel_2_new(fnames,cloud_bbx, dates, year,crs, maxclouds=0.1):
+def download_sentinel_2_new(fnames,cloud_bbx, dates, year,crs, maxclouds=0.3):
     """ Downloads the L2A sentinel layer with 10 and 20 meter bands
 
         Parameters:
@@ -427,7 +427,7 @@ def get_bbx(cloud_bbx, crs):
 
 
 
-def identify_clouds_big_bbx(cloud_bbx, dates, year,crs, maxclouds=0.4):
+def identify_clouds_big_bbx(cloud_bbx, dates, year,crs, maxclouds=0.3):
     """
     Downloads and calculates cloud cover and shadow
 

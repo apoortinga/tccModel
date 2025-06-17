@@ -10,6 +10,8 @@ from tqdm import tqdm
 import rasterio
 from rasterio.transform import from_bounds
 import argparse
+from google.cloud import storage
+
 
 if tf.__version__[0] == '2':
     import tensorflow.compat.v1 as tf
@@ -26,17 +28,20 @@ from preprocessing.whittaker_smoother import Smoother
 from processing.process import process_tile
 from tof.tof_downloading import to_int16, to_float32
 from processing.subtile import process_subtiles,process_subtiles_label
+from ee_auth import ee_initialize
+
+ee_initialize()
 
 SIZE = 172-14
 
-
-def upload_to_gcs(local_file_path, bucket_name, blob_path):
+'''
+def upload_to_gcs(local_file_path, bucket_name, blob_path,year):
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_path)
     blob.upload_from_filename(local_file_path)
-    print(f"Uploaded {local_file_path} to gs://{bucket_name}/{blob_path}")
-
+    print(f"Uploaded {local_file_path} to gs://{bucket_name}/{blob_path}/{year}")
+'''
 
 def load_config(path="config.yaml"):
     with open(path, "r") as f:
@@ -325,6 +330,18 @@ def download_tile(x: int, y: int,  year, initial_bbx, expansion, local_path = "/
     return myBox, len(clean_dates), crs
 
 
+def upload_to_gcs(local_file_path, bucket_name, blob_path, year, project_id=""):
+    client = storage.Client(project=project_id)
+    bucket = client.bucket(bucket_name)
+
+    # build a year‐folder under your blob_path
+    target_path = f"{year}/{blob_path}"
+
+    blob = bucket.blob(target_path)
+    blob.upload_from_filename(local_file_path)
+
+    print(f"✅ Uploaded {local_file_path} to gs://{bucket_name}/{target_path}")
+
 def write_geotiff(bbox, crs, height, width, out_path,data):
     """
     Save a dummy GeoTIFF with the specified bounding box, CRS, and shape.
@@ -360,34 +377,34 @@ def write_geotiff(bbox, crs, height, width, out_path,data):
 
 
 
-cfg = load_config("config.yaml")
+#cfg = load_config("config.yaml")
+#print(cfg)
+local_path = f"/tmp/app/" #f"{cfg['paths']['local_path']}/"
+superresolve_model_path = "/app/supres-40k-swir/" #cfg["paths"]["superresolve_model_path"]
 
-local_path = f"{cfg['paths']['local_path']}/"
-superresolve_model_path = cfg["paths"]["superresolve_model_path"]
 
 
+#parser = argparse.ArgumentParser(description="Append a labeled point to the labeltcc file.")
+#parser.add_argument("--lat", type=float, required=True, help="Latitude value")
+#parser.add_argument("--lon", type=float, required=True, help="Longitude value")
+#parser.add_argument("--x", type=int, default=1, help="X coordinate (default: 1)")
+#parser.add_argument("--y", type=int, default=1, help="Y coordinate (default: 1)")
+#parser.add_argument("--country", type=str, default="cameroon", help="country name")
+#parser.add_argument("--year", type=int, default=2024, help="year")
+#parser.add_argument("--outputdir", type=str, default="/home/ate/temp/", help="output dir")
+#parser.add_argument('--ee-key', type=str, help='Path to Earth Engine service account key')
 
-parser = argparse.ArgumentParser(description="Append a labeled point to the labeltcc file.")
-parser.add_argument("--lat", type=float, required=True, help="Latitude value")
-parser.add_argument("--lon", type=float, required=True, help="Longitude value")
-parser.add_argument("--x", type=int, default=1, help="X coordinate (default: 1)")
-parser.add_argument("--y", type=int, default=1, help="Y coordinate (default: 1)")
-parser.add_argument("--country", type=str, default="cameroon", help="country name")
-parser.add_argument("--year", type=int, default=2024, help="year")
-parser.add_argument("--outputdir", type=str, default="/home/ate/temp/", help="output dir")
-parser.add_argument('--ee-key', type=str, help='Path to Earth Engine service account key')
+#args = parser.parse_args()
 
-args = parser.parse_args()
+#import ee
+#import google.auth
+#from google.oauth2 import service_account
 
-import ee
-import google.auth
-from google.oauth2 import service_account
-
-credentials = service_account.Credentials.from_service_account_file(
-    args.ee_key,
-    scopes=["https://www.googleapis.com/auth/earthengine.readonly"]
-)
-ee.Initialize(credentials)
+#credentials = service_account.Credentials.from_service_account_file(
+#     cfg["paths"]['ee-key'],
+#    scopes=["https://www.googleapis.com/auth/earthengine.readonly"]
+#)
+#ee.Initialize(credentials)
 
 
 
@@ -404,19 +421,43 @@ if os.path.exists(superresolve_model_path):
     superresolve_inp = superresolve_sess.graph.get_tensor_by_name("superresolve/Placeholder:0")
     superresolve_inp_bilinear = superresolve_sess.graph.get_tensor_by_name("superresolve/Placeholder_1:0")
 else:
-    raise Exception(f"The model path {args.superresolve_model_path} does not exist")
+    raise Exception(f"The model path {superresolve_model_path} does not exist")
 
+def load_config(path="config.yaml"):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+cfg = load_config()
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--x", type=int, required=True)
+parser.add_argument("--y", type=int, required=True)
+parser.add_argument("--lon", type=float, required=True)
+parser.add_argument("--lat", type=float, required=True)
+parser.add_argument("--year", type=int, required=True)
+#parser.add_argument("--outputdir", type=str, default=cfg["paths"]["output_dir"])
+parser.add_argument("--bucket_name", type=str, required=True)
+parser.add_argument("--blob_path", type=str, default="cameroon")
+parser.add_argument("--country", type=str, default="cameroon")
+parser.add_argument("--project", type=str, default="")
+
+args = parser.parse_args()
 
 
 year = args.year
 lat = args.lat
-lon =args.lon
-x = args.x # random.randint(1000, 9999)
-y = args.y #random.randint(1000, 9999)
+lon = args.lon
+x = args.x
+y = args.y
+country = args.country
+outputdir = "/tmp/app/"
+bucket_name = args.bucket_name
+blob_path = args.blob_path
+project = args.project
+
 initial_bbx = [lon, lat, lon, lat]
 expansion = 200
 
-outputdir = args.outputdir
 
 # Create directories if they don't exist
 os.makedirs(f"{local_path}/{str(year)}/geotifs", exist_ok=True)
@@ -426,8 +467,9 @@ os.makedirs(f"{local_path}/{str(year)}/data", exist_ok=True)
 print("############# step 1: getting the data #############")
 bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion,local_path =  local_path )
 
-out_tif_path = f"{outputdir}/{str(year)}/geotifs/{y}_{x}.tif"
+out_tif_path = f"{local_path}/{str(year)}/geotifs/{y}_{x}.tif"
 write_geotiff(bbx, crs, 640, 640, out_tif_path,np.zeros((640, 640), dtype=np.uint8))
+upload_to_gcs(out_tif_path, bucket_name, f"{blob_path}/{y}_{x}.tif",year)
 
 #print("############# step 1a: getting the label #############")
 
@@ -452,7 +494,10 @@ print("############# step 5 store training data #############")
 
 print("############# step 6 store data #############")
 scaled = np.round(full_tile * 10000).astype(np.int16)
-print("saving file",f"{outputdir}/{str(year)}/data/{y}_{str(x)}.npz")
-np.savez_compressed(f"{outputdir}/{str(year)}/data/{y}_{str(x)}.npz", data=scaled)
 
+outfile = f"{local_path}/{str(year)}/data/{y}_{str(x)}.npz"
+print(f"saving file {outfile}")
+
+np.savez_compressed(outfile, data=scaled)
+upload_to_gcs(outfile, bucket_name, f"{blob_path}/{y}_{str(x)}.npz",year)
 

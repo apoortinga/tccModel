@@ -1,9 +1,12 @@
 
 
 paths:
-  local_path: tmp/app/
+  local_path: /tmp/app
+  predict_model_path: ../models-release/master-ckpt-frozen/
   superresolve_model_path: /app/supres-40k-swir/
-
+  output_dir : /tmp/app
+  bucket_name : bucketsvmk
+  blob_path : cameroon
 
 flags:
   ul_flag: false
@@ -18,10 +21,14 @@ flags:
   make_training_data: false
 
 tile_processing:
+  year: 2024
   length: 4
   n_tiles: null
-  x: null
-  y: null
+  x: 3451
+  y: 1924
   start: 0
   end: 100000
   n_rows: 8
+  lon: 11.9034 
+  lat: 6.225
+  country: cameroon
