@@ -427,36 +427,81 @@ def load_config(path="config.yaml"):
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
-cfg = load_config()
+
+
+def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_path):
+    initial_bbx = [lon, lat, lon, lat]
+    expansion = 200
+    print("############# step 1: getting the data #############")
+    bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion,local_path =  local_path )
+
+    out_tif_path = f"{local_path}/{str(year)}/geotifs/{y}_{x}.tif"
+    write_geotiff(bbx, crs, 640, 640, out_tif_path,np.zeros((640, 640), dtype=np.uint8))
+    upload_to_gcs(out_tif_path, bucket_name, f"{blob_path}/{y}_{x}.tif",year)
+
+    #print("############# step 1a: getting the label #############")
+
+    #label = gee_downloading.getLabel(initial_bbx,crs)
+    #out_tif_path = f"{outputdir}/{str(year)}/label/{y}_{x}.tif"
+    #print(label)
+    #write_geotiff(bbx, crs, 640, 640, out_tif_path,label)
+
+    print("############# step 2: processing data #############")
+    s2, dates, interp, s1, dem, cloudshad, snow = process_tile(x = x,y = y,local_path = local_path, bbx = bbx, make_shadow = True)
+
+    print("############# step 3: apply super resolve #############")
+    s2[..., :10] = superresolve_large_tile(s2[..., :10], superresolve_sess)
+
+
+    print("############# step 4 process and store tiles #############")
+    full_tile = process_subtiles(local_path,x, y, s2, dates, interp, s1, dem, bbx, SIZE, bbx)
+
+    print("############# step 5 store training data #############")
+    #full_tile = process_subtiles_label(local_path,x, y, s2, dates, interp, s1, dem, bbx, SIZE, bbx)
+
+
+    print("############# step 6 store data #############")
+    scaled = np.round(full_tile * 10000).astype(np.int16)
+
+    outfile = f"{local_path}/{str(year)}/data/{y}_{str(x)}.npz"
+    print(f"saving file {outfile}")
+
+    np.savez_compressed(outfile, data=scaled)
+    upload_to_gcs(outfile, bucket_name, f"{blob_path}/{y}_{str(x)}.npz",year)
+
+
+#cfg = load_config()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--x", type=int, required=True)
-parser.add_argument("--y", type=int, required=True)
-parser.add_argument("--lon", type=float, required=True)
-parser.add_argument("--lat", type=float, required=True)
+
+#parser.add_argument("--x", type=int, required=True)
+#parser.add_argument("--y", type=int, required=True)
+#parser.add_argument("--lon", type=float, required=True)
+#parser.add_argument("--lat", type=float, required=True)
 parser.add_argument("--year", type=int, required=True)
 #parser.add_argument("--outputdir", type=str, default=cfg["paths"]["output_dir"])
 parser.add_argument("--bucket_name", type=str, required=True)
+parser.add_argument("--tile_list", type=str, required=True)
 parser.add_argument("--blob_path", type=str, default="cameroon")
-parser.add_argument("--country", type=str, default="cameroon")
-parser.add_argument("--project", type=str, default="")
+#parser.add_argument("--country", type=str, default="cameroon")
+#parser.add_argument("--project", type=str, default="")
+
 
 args = parser.parse_args()
 
-
 year = args.year
-lat = args.lat
-lon = args.lon
-x = args.x
-y = args.y
-country = args.country
+#lat = args.lat
+#lon = args.lon
+#x = args.x
+#y = args.y
+#country = args.country
 outputdir = "/tmp/app/"
 bucket_name = args.bucket_name
 blob_path = args.blob_path
-project = args.project
+#project = args.project
 
-initial_bbx = [lon, lat, lon, lat]
-expansion = 200
+
+
 
 
 # Create directories if they don't exist
@@ -464,6 +509,27 @@ os.makedirs(f"{local_path}/{str(year)}/geotifs", exist_ok=True)
 os.makedirs(f"{local_path}/{str(year)}/label", exist_ok=True)
 os.makedirs(f"{local_path}/{str(year)}/data", exist_ok=True)
 
+
+if args.tile_list:
+    # read the CSV (local or gs:// path—pandas can handle both with gcsfs installed)
+    df = pd.read_csv(args.tile_list)
+    print(df)
+    for _, row in df.iterrows():
+        print(row)
+        process_tile_row(
+            lat=row["lat"],
+            lon=row["lon"],
+            x=int(row["x"]),
+            y=int(row["y"]),
+            country=row.get("country", ""),      # only if you need it
+            province=row.get("province", ""),
+            year=year,
+            bucket_name=bucket_name,
+            blob_path=blob_path
+        )
+
+
+'''
 print("############# step 1: getting the data #############")
 bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion,local_path =  local_path )
 
@@ -500,4 +566,4 @@ print(f"saving file {outfile}")
 
 np.savez_compressed(outfile, data=scaled)
 upload_to_gcs(outfile, bucket_name, f"{blob_path}/{y}_{str(x)}.npz",year)
-
+'''
