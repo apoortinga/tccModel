@@ -16,3 +16,5 @@ requests
 earthengine-api
 google-api-core
 google-auth
+fsspec
+gcsfs
