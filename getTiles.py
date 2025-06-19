@@ -331,7 +331,7 @@ def download_tile(x: int, y: int,  year, initial_bbx, expansion, local_path = "/
 
 
 def upload_to_gcs(local_file_path, bucket_name, blob_path, year, project_id=""):
-    client = storage.Client(project=project_id)
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
 
     # build a year‐folder under your blob_path
@@ -429,7 +429,19 @@ def load_config(path="config.yaml"):
 
 
 
-def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_path):
+def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_path,project):
+
+    client = storage.Client(project)
+    bucket = client.bucket(bucket_name)
+
+    # build the GCS keys
+    geotiff_blob = f"{year}/{blob_path}/{y}_{x}.tif"
+    npz_blob     = f"{year}/{blob_path}/{y}_{x}.npz"
+
+    if bucket.blob(npz_blob).exists():
+        print(f"↩️  Skipping {x},{y}: already in gs://{bucket_name}/{year}/{blob_path}")
+        return
+
     initial_bbx = [lon, lat, lon, lat]
     expansion = 200
     print("############# step 1: getting the data #############")
@@ -469,7 +481,6 @@ def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_
     np.savez_compressed(outfile, data=scaled)
     upload_to_gcs(outfile, bucket_name, f"{blob_path}/{y}_{str(x)}.npz",year)
 
-
 #cfg = load_config()
 
 parser = argparse.ArgumentParser()
@@ -484,7 +495,7 @@ parser.add_argument("--bucket_name", type=str, required=True)
 parser.add_argument("--tile_list", type=str, required=True)
 parser.add_argument("--blob_path", type=str, default="cameroon")
 #parser.add_argument("--country", type=str, default="cameroon")
-#parser.add_argument("--project", type=str, default="")
+parser.add_argument("--project", type=str, default="")
 
 
 args = parser.parse_args()
@@ -498,7 +509,7 @@ year = args.year
 outputdir = "/tmp/app/"
 bucket_name = args.bucket_name
 blob_path = args.blob_path
-#project = args.project
+project = args.project
 
 
 
@@ -525,7 +536,8 @@ if args.tile_list:
             province=row.get("province", ""),
             year=year,
             bucket_name=bucket_name,
-            blob_path=blob_path
+            blob_path=blob_path,
+            project = project
         )
 
 
