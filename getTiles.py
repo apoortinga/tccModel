@@ -431,56 +431,59 @@ def load_config(path="config.yaml"):
 
 def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_path,project):
 
-    client = storage.Client(project)
-    bucket = client.bucket(bucket_name)
+    try:
+        client = storage.Client(project)
+        bucket = client.bucket(bucket_name)
 
-    # build the GCS keys
-    geotiff_blob = f"{year}/{blob_path}/{y}_{x}.tif"
-    npz_blob     = f"{year}/{blob_path}/{y}_{x}.npz"
+        # build the GCS keys
+        geotiff_blob = f"{year}/{blob_path}/{y}_{x}.tif"
+        npz_blob     = f"{year}/{blob_path}/{y}_{x}.npz"
 
-    if bucket.blob(npz_blob).exists():
-        print(f"↩️  Skipping {x},{y}: already in gs://{bucket_name}/{year}/{blob_path}")
-        return
+        if bucket.blob(npz_blob).exists():
+            print(f"↩️  Skipping {x},{y}: already in gs://{bucket_name}/{year}/{blob_path}")
+            return
 
-    initial_bbx = [lon, lat, lon, lat]
-    expansion = 200
-    print("############# step 1: getting the data #############")
-    bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion,local_path =  local_path )
+        initial_bbx = [lon, lat, lon, lat]
+        expansion = 200
+        print("############# step 1: getting the data #############")
+        bbx, n_images, crs = download_tile(x = x, y = y,  year = year, initial_bbx = initial_bbx, expansion = expansion,local_path =  local_path )
 
-    out_tif_path = f"{local_path}/{str(year)}/geotifs/{y}_{x}.tif"
-    write_geotiff(bbx, crs, 640, 640, out_tif_path,np.zeros((640, 640), dtype=np.uint8))
-    upload_to_gcs(out_tif_path, bucket_name, f"{blob_path}/{y}_{x}.tif",year)
+        out_tif_path = f"{local_path}/{str(year)}/geotifs/{y}_{x}.tif"
+        write_geotiff(bbx, crs, 640, 640, out_tif_path,np.zeros((640, 640), dtype=np.uint8))
+        upload_to_gcs(out_tif_path, bucket_name, f"{blob_path}/{y}_{x}.tif",year)
 
-    #print("############# step 1a: getting the label #############")
+        #print("############# step 1a: getting the label #############")
 
-    #label = gee_downloading.getLabel(initial_bbx,crs)
-    #out_tif_path = f"{outputdir}/{str(year)}/label/{y}_{x}.tif"
-    #print(label)
-    #write_geotiff(bbx, crs, 640, 640, out_tif_path,label)
+        #label = gee_downloading.getLabel(initial_bbx,crs)
+        #out_tif_path = f"{outputdir}/{str(year)}/label/{y}_{x}.tif"
+        #print(label)
+        #write_geotiff(bbx, crs, 640, 640, out_tif_path,label)
 
-    print("############# step 2: processing data #############")
-    s2, dates, interp, s1, dem, cloudshad, snow = process_tile(x = x,y = y,local_path = local_path, bbx = bbx, make_shadow = True)
+        print("############# step 2: processing data #############")
+        s2, dates, interp, s1, dem, cloudshad, snow = process_tile(x = x,y = y,local_path = local_path, bbx = bbx, make_shadow = True)
 
-    print("############# step 3: apply super resolve #############")
-    s2[..., :10] = superresolve_large_tile(s2[..., :10], superresolve_sess)
-
-
-    print("############# step 4 process and store tiles #############")
-    full_tile = process_subtiles(local_path,x, y, s2, dates, interp, s1, dem, bbx, SIZE, bbx)
-
-    print("############# step 5 store training data #############")
-    #full_tile = process_subtiles_label(local_path,x, y, s2, dates, interp, s1, dem, bbx, SIZE, bbx)
+        print("############# step 3: apply super resolve #############")
+        s2[..., :10] = superresolve_large_tile(s2[..., :10], superresolve_sess)
 
 
-    print("############# step 6 store data #############")
-    scaled = np.round(full_tile * 10000).astype(np.int16)
+        print("############# step 4 process and store tiles #############")
+        full_tile = process_subtiles(local_path,x, y, s2, dates, interp, s1, dem, bbx, SIZE, bbx)
 
-    outfile = f"{local_path}/{str(year)}/data/{y}_{str(x)}.npz"
-    print(f"saving file {outfile}")
+        print("############# step 5 store training data #############")
+        #full_tile = process_subtiles_label(local_path,x, y, s2, dates, interp, s1, dem, bbx, SIZE, bbx)
 
-    np.savez_compressed(outfile, data=scaled)
-    upload_to_gcs(outfile, bucket_name, f"{blob_path}/{y}_{str(x)}.npz",year)
 
+        print("############# step 6 store data #############")
+        scaled = np.round(full_tile * 10000).astype(np.int16)
+
+        outfile = f"{local_path}/{str(year)}/data/{y}_{str(x)}.npz"
+        print(f"saving file {outfile}")
+
+        np.savez_compressed(outfile, data=scaled)
+        upload_to_gcs(outfile, bucket_name, f"{blob_path}/{y}_{str(x)}.npz",year)
+    except:
+        pass
+        
 #cfg = load_config()
 
 parser = argparse.ArgumentParser()
