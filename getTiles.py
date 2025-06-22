@@ -11,7 +11,8 @@ import rasterio
 from rasterio.transform import from_bounds
 import argparse
 from google.cloud import storage
-
+import gc
+import shutil, os
 
 if tf.__version__[0] == '2':
     import tensorflow.compat.v1 as tf
@@ -429,7 +430,7 @@ def load_config(path="config.yaml"):
 
 
 
-def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_path,project):
+def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_path,project,local_path):
 
     try:
         client = storage.Client(project)
@@ -442,6 +443,12 @@ def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_
         if bucket.blob(npz_blob).exists():
             print(f"↩️  Skipping {x},{y}: already in gs://{bucket_name}/{year}/{blob_path}")
             return
+
+
+        # Create directories if they don't exist
+        os.makedirs(f"{local_path}/{str(year)}/geotifs", exist_ok=True)
+        os.makedirs(f"{local_path}/{str(year)}/label", exist_ok=True)
+        os.makedirs(f"{local_path}/{str(year)}/data", exist_ok=True)
 
         initial_bbx = [lon, lat, lon, lat]
         expansion = 200
@@ -481,6 +488,13 @@ def process_tile_row(lat, lon, x, y, country, province, year, bucket_name, blob_
 
         np.savez_compressed(outfile, data=scaled)
         upload_to_gcs(outfile, bucket_name, f"{blob_path}/{y}_{str(x)}.npz",year)
+        del s2, full_tile, scaled
+        gc.collect()
+
+        shutil.rmtree(f"{local_path}/{x}/{y}", ignore_errors=True)  # cleanup tile folder
+        os.remove(out_tif_path)  # remove GeoTIFF
+        os.remove(outfile)       # remove NPZ file
+                
     except:
         pass
         
@@ -516,14 +530,6 @@ project = args.project
 
 
 
-
-
-# Create directories if they don't exist
-os.makedirs(f"{local_path}/{str(year)}/geotifs", exist_ok=True)
-os.makedirs(f"{local_path}/{str(year)}/label", exist_ok=True)
-os.makedirs(f"{local_path}/{str(year)}/data", exist_ok=True)
-
-
 if args.tile_list:
     # read the CSV (local or gs:// path—pandas can handle both with gcsfs installed)
     df = pd.read_csv(args.tile_list)
@@ -540,7 +546,8 @@ if args.tile_list:
             year=year,
             bucket_name=bucket_name,
             blob_path=blob_path,
-            project = project
+            project = project,
+            local_path = local_path
         )
 
 
